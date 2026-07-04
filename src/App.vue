@@ -19,9 +19,45 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { showConfirmDialog } from 'vant'
+import { useRegisterSW } from 'virtual:pwa-register/vue'
 
 const route = useRoute()
 const showTabbar = computed(() => route.meta.showTabbar !== false)
+
+// PWA Service Worker 更新提示
+// 当检测到新版本时，弹出对话框提示用户刷新
+const { updateServiceWorker } = useRegisterSW({
+  onRegisteredSW(swUrl, registration) {
+    // 每 60 分钟检查一次更新
+    if (registration) {
+      setInterval(() => {
+        registration.update()
+      }, 60 * 60 * 1000)
+    }
+  },
+  onOfflineReady() {
+    // 首次离线就绪提示
+    showConfirmDialog({
+      title: '离线可用',
+      message: '应用已缓存完成，现在可以离线使用了！',
+      showCancelButton: false,
+      confirmButtonText: '知道了'
+    }).catch(() => {})
+  },
+  onNeedRefresh() {
+    // 检测到新版本，提示用户刷新
+    showConfirmDialog({
+      title: '发现新版本',
+      message: '应用有新版本可用，是否立即刷新以获取最新功能？',
+      confirmButtonText: '刷新',
+      cancelButtonText: '稍后'
+    }).then(() => {
+      // 调用 updateServiceWorker 触发 SW 更新并刷新页面
+      updateServiceWorker(true)
+    }).catch(() => {})
+  }
+})
 </script>
 
 <style scoped>
