@@ -1,0 +1,34 @@
+{
+  "name": "fuel-consumption",
+  "version": "1.0.0",
+  "description": "油耗记录APP - 记录加油与行程数据，自动计算油耗与费用",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "cap:sync": "cap sync",
+    "cap:add:android": "cap add android",
+    "cap:open:android": "cap open android",
+    "android": "vite build && cap sync && cap open android"
+  },
+  "dependencies": {
+    "vue": "^3.4.0",
+    "vue-router": "^4.3.0",
+    "pinia": "^2.1.7",
+    "vant": "^4.8.0",
+    "echarts": "^5.5.0",
+    "xlsx": "^0.18.5",
+    "@capacitor/core": "^5.6.0",
+    "@capacitor/android": "^5.6.0",
+    "@capacitor/app": "^5.0.0",
+    "@capacitor/preferences": "^5.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.0.0",
+    "@capacitor/cli": "^5.6.0",
+    "unplugin-vue-components": "^0.26.0",
+    "@vant/auto-import-resolver": "^1.2.0"
+  }
+}

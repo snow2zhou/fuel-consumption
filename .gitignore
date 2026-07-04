@@ -1,0 +1,28 @@
+# 依赖
+node_modules/
+dist/
+
+# Capacitor 安卓工程（首次执行 npm run cap:add:android 后生成）
+android/
+ios/
+
+# 日志
+*.log
+npm-debug.log*
+
+# 编辑器
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 环境变量
+.env
+.env.local
+.env.*.local
