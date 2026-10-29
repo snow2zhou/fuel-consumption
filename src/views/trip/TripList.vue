@@ -1,7 +1,5 @@
 <template>
   <div class="page">
-    <van-nav-bar title="行程快照" />
-
     <!-- 全局低油量预警横幅 -->
     <div class="global-warning" v-if="hasAnyWarning">
       <van-icon name="warning-o" />

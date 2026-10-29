@@ -52,7 +52,7 @@
 
       <van-empty
         v-if="list.length === 0"
-        description="暂无记录。可以在「油价」页查一次自动记录，或点右上角新增"
+        description="暂无记录。可以在「油价」页查一次自动记录，或点上方「新增」"
       />
 
       <van-cell-group v-else inset>

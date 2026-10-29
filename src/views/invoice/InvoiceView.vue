@@ -1,13 +1,12 @@
 <template>
   <div class="page">
-    <van-nav-bar title="发票">
-      <template #right>
-        <van-button size="small" type="primary" @click="onNew">新建</van-button>
-      </template>
-    </van-nav-bar>
+    <!-- 新建发票入口（原标题栏按钮移至此处） -->
+    <div class="inv-actions">
+      <van-button type="primary" icon="plus" block round @click="onNew">新建发票</van-button>
+    </div>
 
     <!-- 还没有任何发票 -->
-    <van-empty v-if="records.length === 0" description="暂无发票，点击右上角「新建」" />
+    <van-empty v-if="records.length === 0" description="暂无发票，点击上方「新建发票」" />
 
     <template v-else>
       <!-- ① 顶部：先选择一张发票 -->
@@ -597,4 +596,5 @@ function onDeleteById(id) {
   line-height: 1.6;
 }
 .delete-zone { margin: 16px 12px 24px; }
+.inv-actions { margin: 10px 12px 0; }
 </style>

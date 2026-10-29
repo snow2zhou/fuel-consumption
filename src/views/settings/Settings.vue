@@ -1,7 +1,5 @@
 <template>
   <div class="page">
-    <van-nav-bar title="设置" />
-
     <van-cell-group inset title="偏好设置">
       <van-cell title="默认油号" :value="settings.preferredFuelType" is-link @click="showFuelPicker = true" />
       <van-cell title="油耗单位" :value="settings.unit" is-link @click="showUnitPicker = true" />

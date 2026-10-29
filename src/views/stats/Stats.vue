@@ -1,7 +1,5 @@
 <template>
   <div class="page">
-    <van-nav-bar title="统计报表" />
-
     <div v-if="fullRefuelList.length === 0" class="empty-tip">
       <van-empty description="暂无数据，请先添加加油记录" />
     </div>
