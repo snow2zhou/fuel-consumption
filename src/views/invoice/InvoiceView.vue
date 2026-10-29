@@ -1,12 +1,8 @@
 <template>
   <div class="page">
-    <!-- 新建发票入口（原标题栏按钮移至此处） -->
-    <div class="inv-actions">
-      <van-button type="primary" icon="plus" block round @click="onNew">新建发票</van-button>
-    </div>
 
     <!-- 还没有任何发票 -->
-    <van-empty v-if="records.length === 0" description="暂无发票，点击上方「新建发票」" />
+    <van-empty v-if="records.length === 0" description="暂无发票，点击右下角「+」添加" />
 
     <template v-else>
       <!-- ① 顶部：先选择一张发票 -->
@@ -220,6 +216,10 @@
         </div>
       </div>
     </van-popup>
+    <!-- 新建发票悬浮按钮（与行程页一致） -->
+    <div class="fab" @click="onNew">
+      <van-icon name="plus" size="24" color="#fff" />
+    </div>
   </div>
 </template>
 
@@ -596,5 +596,12 @@ function onDeleteById(id) {
   line-height: 1.6;
 }
 .delete-zone { margin: 16px 12px 24px; }
-.inv-actions { margin: 10px 12px 0; }
+.fab {
+  position: fixed; right: 20px; bottom: 80px;
+  width: 52px; height: 52px; border-radius: 50%;
+  background: #07c160;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(7, 193, 96, 0.4);
+  z-index: 100;
+}
 </style>
