@@ -1,7 +1,5 @@
 <template>
   <div class="page">
-    <van-nav-bar title="加油记录" />
-
     <!-- 油价入口：左 = 今日油价 + 调价方向 / 右 = 调价日历 -->
     <div class="oil-entry-row">
       <div class="oil-entry" @click="goOil">
