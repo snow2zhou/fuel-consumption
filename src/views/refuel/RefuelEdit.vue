@@ -28,6 +28,22 @@
             <span>{{ form.fuelType }}</span>
           </template>
         </van-field>
+        <van-field label="关联发票" is-link input-align="right" readonly @click="showInvoicePicker = true">
+          <template #input>
+            <span>{{ invoiceLabel }}</span>
+          </template>
+        </van-field>
+        <van-field
+          v-model="form.invoiceLink"
+          label="发票链接"
+          placeholder="电子发票链接（选填）"
+          clearable
+        />
+        <van-field label="开票日期" input-align="right">
+          <template #input>
+            <input type="date" v-model="form.invoiceDate" class="native-datetime" />
+          </template>
+        </van-field>
         <van-field name="isFull" label="是否加满" input-align="right">
           <template #input>
             <van-switch v-model="form.isFull" />
@@ -42,6 +58,7 @@
           type="number"
           placeholder="请输入加油量"
           input-align="right"
+          @update:model-value="autoCalcCost"
         >
           <template #button>升(L)</template>
         </van-field>
@@ -51,10 +68,16 @@
           type="number"
           placeholder="请输入油价"
           input-align="right"
-          @update:model-value="autoCalcCost"
+          @update:model-value="onPriceInput"
         >
           <template #button>元/L</template>
         </van-field>
+        <div v-if="priceRef" class="price-ref">
+          <span class="pr-dot"></span>
+          参考价 {{ formatNum(priceRef.price, 2) }} 元/升
+          <span class="pr-meta">{{ oilProvince }} · {{ form.fuelType }}{{ priceRef.date ? ' · ' + priceRef.date + ' 起' : '' }} · 省最高零售价</span>
+          <span v-if="priceUserModified" class="pr-touched">已手动修改</span>
+        </div>
         <van-field
           v-model.number="form.cost"
           label="费用"
@@ -114,7 +137,7 @@
           </div>
           <div class="row">
             <span class="label">百公里油耗</span>
-            <span class="hl">{{ formatNum(previewComparison.fuelPer100km, 2) }} L/100km</span>
+            <span class="hl">{{ formatFuel(previewComparison.fuelPer100km, fuelUnit) }} {{ fuelUnit }}</span>
           </div>
           <div class="row">
             <span class="label">每公里费用</span>
@@ -144,7 +167,7 @@
           </div>
           <div class="row hint">
             <span>参考：油箱 {{ formatNum(previewPrediction.tankCapacity, 0) }}L，
-              平均油耗 {{ formatNum(previewPrediction.avgFuel, 2) }} L/100km，
+              平均油耗 {{ formatFuel(previewPrediction.avgFuel, fuelUnit) }} {{ fuelUnit }}，
               日均 {{ formatNum(previewPrediction.avgDailyMileage, 1) }} km</span>
           </div>
           <div class="row deviation" v-if="previewPrediction.deviation">
@@ -172,8 +195,19 @@
     <van-popup v-model:show="showFuelPicker" position="bottom" round>
       <van-picker
         :columns="FUEL_TYPES"
+        :model-value="[form.fuelType]"
         @confirm="onFuelConfirm"
         @cancel="showFuelPicker = false"
+      />
+    </van-popup>
+
+    <!-- 关联发票选择器 -->
+    <van-popup v-model:show="showInvoicePicker" position="bottom" round>
+      <van-picker
+        :columns="invoiceColumns"
+        :model-value="[form.invoiceId || '']"
+        @confirm="onInvoiceConfirm"
+        @cancel="showInvoicePicker = false"
       />
     </van-popup>
   </div>
@@ -186,18 +220,89 @@ import { showToast, showSuccessToast, showConfirmDialog } from 'vant'
 import { useRefuelStore } from '../../stores/refuel'
 import { useSettingsStore } from '../../stores/settings'
 import { createRefuelRecord, FUEL_TYPES } from '../../api/models'
+import { getPriceOnDate } from '../../api/oilHistory'
+import { useInvoiceStore } from '../../stores/invoice'
 import { calcRefuelComparison, predictRefuelRange } from '../../utils/calc'
 import { formatDate, formatNum } from '../../utils/format'
+import { formatFuel } from '../../utils/units'
 
 const route = useRoute()
 const router = useRouter()
 const store = useRefuelStore()
 const settingsStore = useSettingsStore()
+const invoiceStore = useInvoiceStore()
+
+// 当前油耗显示单位（来自设置，使"油耗单位"设置生效）
+const fuelUnit = computed(() => settingsStore.settings.unit)
 
 const isEdit = computed(() => !!route.params.id)
 const form = reactive({ ...createRefuelRecord() })
 
+/* ---------- 参考油价（省最高零售价，自动带出） ---------- */
+const oilProvince = computed(() => settingsStore.settings.oilProvince || '')
+const autoFillEnabled = computed(() => settingsStore.settings.autoFillPrice !== false)
+const priceRef = ref(null) // { price, date }
+const lastAutoPrice = ref(null) // 上次自动填入的值（用于判断用户是否改过）
+
+/** 记录日期：按加油时间取，而不是"今天"（支持补录） */
+function refuelDate() {
+  return (isoToLocal(form.time) || '').slice(0, 10)
+}
+
+/** 当前价格是否被用户改过（与上次自动填入值不同） */
+const priceUserModified = computed(() =>
+  !isEdit.value && !!priceRef.value && Number(form.price) > 0 &&
+  Number(form.price) !== Number(lastAutoPrice.value)
+)
+
+/** 查当日参考价并自动填入（用户改过则不覆盖） */
+function refreshPriceRef() {
+  const ref = oilProvince.value
+    ? getPriceOnDate(oilProvince.value, form.fuelType, refuelDate())
+    : null
+  priceRef.value = ref
+
+  if (isEdit.value || !autoFillEnabled.value) return
+
+  // 该日期没有参考价：若框里还是上次自动填的值，就清掉，避免把别的时间的价格留在框里
+  if (!ref) {
+    if (Number(form.price) > 0 && Number(form.price) === Number(lastAutoPrice.value)) {
+      form.price = 0
+      lastAutoPrice.value = null
+      autoCalcCost()
+    }
+    return
+  }
+
+  const untouched = !(Number(form.price) > 0) || Number(form.price) === Number(lastAutoPrice.value)
+  if (!untouched) return
+  form.price = ref.price
+  lastAutoPrice.value = ref.price
+  autoCalcCost()
+}
+
+/** 用户编辑价格时重算费用（不做覆盖标记，靠与 lastAutoPrice 比对判断） */
+function onPriceInput() {
+  autoCalcCost()
+}
+
 const showFuelPicker = ref(false)
+
+// 关联发票（外键指向发票实体）
+const showInvoicePicker = ref(false)
+const invoiceColumns = computed(() => [
+  { text: '不关联', value: '' },
+  ...invoiceStore.records.map(r => ({ text: r.title || '(未命名)', value: r.id }))
+])
+const invoiceLabel = computed(() => {
+  if (!form.invoiceId) return '不关联'
+  const inv = invoiceStore.records.find(r => r.id === form.invoiceId)
+  return inv ? inv.title || '(未命名)' : '不关联'
+})
+function onInvoiceConfirm({ selectedValues }) {
+  form.invoiceId = selectedValues[0] || null
+  showInvoicePicker.value = false
+}
 
 // 原生 datetime-local 输入值（格式 YYYY-MM-DDTHH:mm）
 const timeLocal = ref('')
@@ -209,13 +314,22 @@ onMounted(() => {
     const rec = store.getById(route.params.id)
     if (rec) {
       Object.assign(form, rec)
+      // 旧记录可能没有开票字段，显式回退为空，避免沿用新建默认值（今天）
+      form.invoiceLink = rec.invoiceLink || ''
+      form.invoiceDate = rec.invoiceDate || ''
       editingId.value = rec.id
+      // 编辑模式：展示这条记录保存时的参考价快照，不重新计算
+      priceRef.value = rec.priceRef
+        ? { price: Number(rec.priceRef), date: rec.priceRefDate || '' }
+        : null
     }
   } else {
     form.fuelType = '92#'
   }
   // 初始化 datetime-local 值
   syncTimeLocal()
+  // 新建记录：按"加油日期 + 油号"自动带出参考价
+  if (!isEdit.value) refreshPriceRef()
 })
 
 // ISO 时间 → datetime-local 字符串
@@ -239,11 +353,15 @@ function onTimeChange() {
   if (!isNaN(d.getTime())) {
     form.time = d.toISOString()
   }
+  // 日期变了，参考价跟着换（仅当价格没被手动改过）
+  refreshPriceRef()
 }
 
 function onFuelConfirm({ selectedValues }) {
   form.fuelType = selectedValues[0]
   showFuelPicker.value = false
+  // 油号变了，参考价也要换
+  refreshPriceRef()
 }
 
 // 自动计算费用
@@ -300,6 +418,14 @@ function onSave() {
     isFull: !!form.isFull,
     estimatedRange: Number(form.estimatedRange),
     fuelType: form.fuelType,
+    invoiceId: form.invoiceId || null,
+    invoiceLink: (form.invoiceLink || '').trim(),
+    invoiceDate: form.invoiceDate || '',
+    priceRef: priceRef.value ? priceRef.value.price : null,
+    priceRefDate: priceRef.value ? priceRef.value.date || '' : '',
+    priceRefSource: priceRef.value
+      ? `${oilProvince.value} ${form.fuelType} 省最高零售价`
+      : '',
     remark: form.remark || ''
   }
   const res = isEdit.value
@@ -429,4 +555,24 @@ function onDelete() {
   color: #07c160;
   font-weight: 600;
 }
+.price-ref {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 16px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #969799;
+}
+.pr-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #1989fa;
+  flex-shrink: 0;
+}
+.pr-meta { color: #c8c9cc; }
+.pr-touched { color: #ff976a; }
+
 </style>

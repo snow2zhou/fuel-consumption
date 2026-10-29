@@ -65,8 +65,8 @@ export default defineConfig({
       workbox: {
         // 预缓存：所有静态资源（JS/CSS/HTML/图标）
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
-        // 预缓存大小上限（默认 2MB，ECharts 较大，调到 10MB）
-        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
+        // 预缓存大小上限（ECharts 已改为按需引入并单独分包，4MB 足够）
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         // 运行时缓存：动态请求按需缓存（本项目主要为静态资源，预留扩展）
         runtimeCaching: [
           {
@@ -77,6 +77,20 @@ export default defineConfig({
               expiration: {
                 maxEntries: 10,
                 maxAgeSeconds: 60 * 60 * 24 * 365 // 1 年
+              },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          },
+          {
+            // 油价接口：网络优先，断网时回退缓存（本地另有 6 小时 localStorage 缓存）
+            urlPattern: ({ url }) => url.origin === 'https://v1.apizero.cn',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'oil-price-api',
+              networkTimeoutSeconds: 8,
+              expiration: {
+                maxEntries: 40,
+                maxAgeSeconds: 60 * 60 * 6
               },
               cacheableResponse: { statuses: [0, 200] }
             }
@@ -92,8 +106,24 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173
   },
+  preview: {
+    host: '0.0.0.0',
+    port: 4173
+  },
   build: {
     outDir: 'dist',
-    chunkSizeWarningLimit: 1500
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        // 第三方依赖单独分包，提升 PWA 缓存命中率与首屏加载速度
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('echarts') || id.includes('zrender')) return 'echarts'
+            if (id.includes('@vant') || id.includes('vant')) return 'vant'
+            if (id.includes('/vue') || id.includes('vue-') || id.includes('pinia') || id.includes('vue-router')) return 'vue'
+          }
+        }
+      }
+    }
   }
 })

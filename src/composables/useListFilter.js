@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue'
+import { utcMonthsAgoRange } from '../utils/date'
 
 /**
  * 列表筛选 + 分页 共用 composable
@@ -36,14 +37,18 @@ export function useListFilter(getSourceList, options = {}) {
       case 'all':
         return all
       case 'month1': {
-        const start = new Date()
-        start.setMonth(start.getMonth() - 1)
-        return all.filter(r => new Date(r.time) >= start)
+        const { start, end } = utcMonthsAgoRange(1)
+        return all.filter(r => {
+          const t = new Date(r.time)
+          return t >= start && t < end
+        })
       }
       case 'month3': {
-        const start = new Date()
-        start.setMonth(start.getMonth() - 3)
-        return all.filter(r => new Date(r.time) >= start)
+        const { start, end } = utcMonthsAgoRange(3)
+        return all.filter(r => {
+          const t = new Date(r.time)
+          return t >= start && t < end
+        })
       }
       case 'custom': {
         if (!customStart.value || !customEnd.value) return all

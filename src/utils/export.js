@@ -3,11 +3,18 @@
  */
 import * as XLSX from 'xlsx'
 import { formatDate, formatNum, formatMoney } from './format'
+import { settingsRepo } from '../api/storage'
+import { convertFuel } from './units'
 
 /**
  * 导出加油记录到 Excel
  */
 export function exportRefuelExcel(listWithComp) {
+  // 跟随"油耗单位"设置，保证导出报表与界面显示口径一致
+  const unit = settingsRepo.get().unit || 'L/100km'
+  const fuelDigits = unit === 'L/km' ? 4 : 2
+  const fuelHeader = `油耗(${unit})`
+
   // 按时间正序输出（从早到晚，便于阅读）
   const sorted = [...listWithComp].sort((a, b) => new Date(a.time) - new Date(b.time))
 
@@ -24,9 +31,12 @@ export function exportRefuelExcel(listWithComp) {
       '是否加满': r.isFull ? '是' : '否',
       '预计可行驶里程(km)': Number(r.estimatedRange || 0),
       '间驶里程(km)': c.calculable ? Number(c.intervalMileage) : '',
-      '百公里油耗(L/100km)': c.calculable ? Number(formatNum(c.fuelPer100km, 2)) : '',
+      [fuelHeader]: c.calculable ? Number((convertFuel(c.fuelPer100km, unit) ?? 0).toFixed(fuelDigits)) : '',
       '每公里费用(元/km)': c.calculable ? Number(formatNum(c.costPerKm, 3)) : '',
       '期间总费用(元)': c.calculable ? Number(formatMoney(c.totalCost)) : '',
+      '开票日期': r.invoiceDate || '',
+      '发票链接': r.invoiceLink || '',
+      '导出状态': r.exported ? '已导出' : ((r.invoiceId || r.invoiceLink) ? '未导出' : ''),
       '备注': r.remark || ''
     }
   })
@@ -36,7 +46,8 @@ export function exportRefuelExcel(listWithComp) {
   ws['!cols'] = [
     { wch: 6 }, { wch: 18 }, { wch: 8 }, { wch: 12 }, { wch: 12 },
     { wch: 10 }, { wch: 16 }, { wch: 8 }, { wch: 18 }, { wch: 14 },
-    { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 20 }
+    { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 30 },
+    { wch: 10 }, { wch: 20 }
   ]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, '加油记录')

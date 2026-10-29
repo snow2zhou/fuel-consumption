@@ -1,7 +1,7 @@
 <template>
   <div class="app-container">
     <router-view v-slot="{ Component }">
-      <keep-alive include="RefuelList,TripList,Stats">
+      <keep-alive include="RefuelList,TripList,Stats,InvoiceView">
         <component :is="Component" />
       </keep-alive>
     </router-view>
@@ -10,6 +10,7 @@
     <van-tabbar v-if="showTabbar" route safe-area-inset-bottom>
       <van-tabbar-item to="/refuel" icon="fire-o">加油</van-tabbar-item>
       <van-tabbar-item to="/trip" icon="logistics">行程</van-tabbar-item>
+      <van-tabbar-item to="/invoice" icon="description">发票</van-tabbar-item>
       <van-tabbar-item to="/stats" icon="chart-trending-o">统计</van-tabbar-item>
       <van-tabbar-item to="/settings" icon="setting-o">设置</van-tabbar-item>
     </van-tabbar>
@@ -17,10 +18,11 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { showConfirmDialog } from 'vant'
 import { useRegisterSW } from 'virtual:pwa-register/vue'
+import { maybeShowOilReminder } from './composables/useOilReminder'
 
 const route = useRoute()
 const showTabbar = computed(() => route.meta.showTabbar !== false)
@@ -57,6 +59,12 @@ const { updateServiceWorker } = useRegisterSW({
       updateServiceWorker(true)
     }).catch(() => {})
   }
+})
+
+// 应用内油价提醒：每次打开 App 检查是否为调价日/前一天（每个窗口只提醒一次）
+// 延迟执行，避免与首屏渲染、PWA 更新弹窗抢占
+onMounted(() => {
+  setTimeout(() => { maybeShowOilReminder() }, 1500)
 })
 </script>
 

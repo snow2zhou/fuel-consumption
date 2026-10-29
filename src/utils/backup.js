@@ -22,7 +22,11 @@ export function downloadAllDataJson() {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
-  return { fileName, recordCount: data.refuelRecords.length + data.tripRecords.length }
+  return {
+    fileName,
+    recordCount: data.refuelRecords.length + data.tripRecords.length +
+      data.invoiceRecords.length + (data.oilPriceHistory || []).length
+  }
 }
 
 /**

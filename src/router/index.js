@@ -1,7 +1,22 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { useSettingsStore } from '../stores/settings'
+
+// 允许作为默认首页的路由白名单
+const DEFAULT_PAGE_ALLOWED = ['/refuel', '/trip', '/stats', '/invoice', '/settings']
 
 const routes = [
-  { path: '/', redirect: '/refuel' },
+  {
+    path: '/',
+    redirect: () => {
+      try {
+        const dp = useSettingsStore().settings.defaultPage
+        if (DEFAULT_PAGE_ALLOWED.includes(dp)) return dp
+      } catch (e) {
+        // pinia 未就绪时回退默认
+      }
+      return '/trip'
+    }
+  },
   {
     path: '/refuel',
     name: 'RefuelList',
@@ -25,6 +40,24 @@ const routes = [
     name: 'TripEdit',
     component: () => import('../views/trip/TripEdit.vue'),
     meta: { title: '行程快照', showTabbar: false }
+  },
+  {
+    path: '/invoice',
+    name: 'Invoice',
+    component: () => import('../views/invoice/InvoiceView.vue'),
+    meta: { title: '发票', showTabbar: true }
+  },
+  {
+    path: '/oil/prices',
+    name: 'OilPriceRecords',
+    component: () => import('../views/oil/PriceRecords.vue'),
+    meta: { title: '油价记录', showTabbar: false }
+  },
+  {
+    path: '/oil',
+    name: 'OilPrice',
+    component: () => import('../views/oil/OilPrice.vue'),
+    meta: { title: '油价', showTabbar: false }
   },
   {
     path: '/stats',

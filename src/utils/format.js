@@ -38,3 +38,17 @@ export function formatMoney(num) {
   if (num === null || num === undefined || num === '' || isNaN(num)) return '-'
   return Number(num).toFixed(2)
 }
+
+/**
+ * 生成"日期：发票链接"单行文本（用于复制到报销单等外部场景）
+ * 日期优先取该条加油记录的开票日期，缺失时回退到加油日期，
+ * 链接缺失时以"(无链接)"占位，保证每行结构一致。
+ * @param {Object} refuel 加油记录（含 invoiceDate / invoiceLink / time）
+ * @returns {string} 如 "2026-09-01：https://example.com/inv/123"
+ */
+export function formatInvoiceLine(refuel) {
+  if (!refuel) return ''
+  const dateText = refuel.invoiceDate || formatDate(refuel.time, 'YYYY-MM-DD') || '未注明日期'
+  const link = (refuel.invoiceLink || '').trim() || '(无链接)'
+  return `${dateText}：${link}`
+}

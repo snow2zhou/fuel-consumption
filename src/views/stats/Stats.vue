@@ -46,8 +46,8 @@
       <div class="card stats-overview">
         <div class="stats-grid">
           <div class="stats-item">
-            <div class="stat-value">{{ formatNum(statistics.avgFuelPer100km, 2) }}</div>
-            <div class="stat-label">平均百公里油耗<br>(L/100km)</div>
+            <div class="stat-value">{{ formatFuel(statistics.avgFuelPer100km, fuelUnit) }}</div>
+            <div class="stat-label">平均油耗<br>({{ fuelUnit }})</div>
           </div>
           <div class="stats-item">
             <div class="stat-value">{{ formatMoney(statistics.avgCostPerKm) }}</div>
@@ -72,9 +72,43 @@
         </div>
       </div>
 
+      <!-- 油价对比（实际单价 vs 省最高零售价） -->
+      <div v-if="priceStats" class="card price-compare">
+        <div class="pcm-head">
+          <span class="pcm-title">油价对比</span>
+          <span class="pcm-cov">{{ priceStats.count }}/{{ refuelTotalCount }} 次有参考价</span>
+        </div>
+        <div class="pcm-grid">
+          <div class="pcm-item">
+            <div class="pcm-num">{{ formatMoney(priceStats.myAvg) }}</div>
+            <div class="pcm-label">我的均价<br>(元/L)</div>
+          </div>
+          <div class="pcm-item">
+            <div class="pcm-num blue">{{ formatMoney(priceStats.refAvg) }}</div>
+            <div class="pcm-label">省最高零售价<br>(元/L)</div>
+          </div>
+          <div class="pcm-item">
+            <div class="pcm-num" :class="priceStats.totalDiff <= 0 ? 'green' : 'red'">
+              {{ priceStats.totalDiff <= 0 ? '省' : '多花' }} {{ formatMoney(Math.abs(priceStats.totalDiff)) }}
+            </div>
+            <div class="pcm-label">累计差额<br>(元)</div>
+          </div>
+        </div>
+        <div v-if="priceStats.unitDiff !== null" class="pcm-note">
+          平均每升{{ priceStats.unitDiff <= 0 ? '低于' : '高于' }}省最高零售价
+          {{ formatNum(Math.abs(priceStats.unitDiff), 2) }} 元；只统计有参考价的加油记录。
+        </div>
+      </div>
+      <div v-else-if="refuelTotalCount > 0" class="card chart-card">
+        <div class="chart-title">油价对比</div>
+        <div class="pcm-empty">
+          还没有参考价数据。在设置里选定油价地区后，新增加油记录会自动带出当日参考价。
+        </div>
+      </div>
+
       <!-- 油耗趋势图 -->
       <div class="card chart-card">
-        <div class="chart-title">百公里油耗趋势</div>
+        <div class="chart-title">油耗趋势</div>
         <div ref="fuelChartEl" class="chart"></div>
       </div>
 
@@ -106,17 +140,31 @@
 
 <script setup name="Stats">
 import { ref, computed, onMounted, onActivated, nextTick, onDeactivated, watch } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import { LineChart, BarChart } from 'echarts/charts'
+import { TooltipComponent, GridComponent, LegendComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 import { showToast, showSuccessToast } from 'vant'
 import { useRefuelStore } from '../../stores/refuel'
 import { useTripStore } from '../../stores/trip'
+import { useSettingsStore } from '../../stores/settings'
 import { calcStatistics } from '../../utils/calc'
 import { formatNum, formatMoney, formatDate } from '../../utils/format'
+import { formatFuel, convertFuel } from '../../utils/units'
 import { exportRefuelExcel, exportTripExcel } from '../../utils/export'
 import { useListFilter } from '../../composables/useListFilter'
+import { utcMonthsAgoRange } from '../../utils/date'
+import { weightedAveragePrice } from '../../utils/oilPrice'
+
+// 按需注册 ECharts 模块（替代全量引入，显著减小包体）
+echarts.use([LineChart, BarChart, TooltipComponent, GridComponent, LegendComponent, CanvasRenderer])
 
 const refuelStore = useRefuelStore()
 const tripStore = useTripStore()
+const settingsStore = useSettingsStore()
+
+// 当前油耗显示单位（来自设置，使"油耗单位"设置生效）
+const fuelUnit = computed(() => settingsStore.settings.unit)
 
 // 全量数据
 const fullRefuelList = computed(() => refuelStore.listWithComparison)
@@ -140,14 +188,18 @@ const filteredTripList = computed(() => {
     case 'all':
       return all
     case 'month1': {
-      const start = new Date()
-      start.setMonth(start.getMonth() - 1)
-      return all.filter(r => new Date(r.time) >= start)
+      const { start, end } = utcMonthsAgoRange(1)
+      return all.filter(r => {
+        const t = new Date(r.time)
+        return t >= start && t < end
+      })
     }
     case 'month3': {
-      const start = new Date()
-      start.setMonth(start.getMonth() - 3)
-      return all.filter(r => new Date(r.time) >= start)
+      const { start, end } = utcMonthsAgoRange(3)
+      return all.filter(r => {
+        const t = new Date(r.time)
+        return t >= start && t < end
+      })
     }
     case 'custom': {
       if (!customStart.value || !customEnd.value) return all
@@ -232,10 +284,38 @@ const chartData = computed(() => {
   const longFormat = span > 90 * 24 * 3600 * 1000
   return {
     dates: sorted.map(r => formatDate(r.time, longFormat ? 'YYYY-MM' : 'MM-DD HH:mm')),
-    fuels: sorted.map(r => r.comparison && r.comparison.calculable
-      ? +Number(r.comparison.fuelPer100km).toFixed(2) : null),
+    fuels: sorted.map(r => {
+      if (!(r.comparison && r.comparison.calculable)) return null
+      const c = convertFuel(r.comparison.fuelPer100km, fuelUnit.value)
+      return c == null ? null : +c.toFixed(4)
+    }),
     costs: sorted.map(r => +Number(r.cost || 0).toFixed(2)),
-    prices: sorted.map(r => +Number(r.price || 0).toFixed(2))
+    prices: sorted.map(r => +Number(r.price || 0).toFixed(2)),
+    // 省最高零售价参考值（没有则为 null，曲线断开而不是补 0）
+    refPrices: sorted.map(r => (Number(r.priceRef) > 0 ? +Number(r.priceRef).toFixed(2) : null))
+  }
+})
+
+/* ---------- 油价对比（实际单价 vs 省最高零售价） ---------- */
+const refuelTotalCount = computed(() => filteredRefuelList.value.length)
+
+const priceStats = computed(() => {
+  const rows = filteredRefuelList.value.filter(
+    r => Number(r.priceRef) > 0 && Number(r.price) > 0 && Number(r.volume) > 0
+  )
+  if (rows.length === 0) return null
+  const myAvg = weightedAveragePrice(rows.map(r => ({ price: r.price, volume: r.volume })))
+  const refAvg = weightedAveragePrice(rows.map(r => ({ price: r.priceRef, volume: r.volume })))
+  let totalDiff = 0
+  for (const r of rows) {
+    totalDiff += (Number(r.price) - Number(r.priceRef)) * Number(r.volume)
+  }
+  return {
+    count: rows.length,
+    myAvg,
+    refAvg,
+    unitDiff: (myAvg === null || refAvg === null) ? null : myAvg - refAvg,
+    totalDiff
   }
 })
 
@@ -243,7 +323,7 @@ function renderFuelChart() {
   if (!fuelChartEl.value) return
   if (!fuelChart) fuelChart = echarts.init(fuelChartEl.value)
   fuelChart.setOption({
-    tooltip: { trigger: 'axis', formatter: '{b}<br/>{a}: {c} L/100km' },
+    tooltip: { trigger: 'axis', formatter: '{b}<br/>{a}: {c} ' + fuelUnit.value },
     grid: { left: 40, right: 15, top: 20, bottom: 35 },
     xAxis: {
       type: 'category',
@@ -252,7 +332,7 @@ function renderFuelChart() {
     },
     yAxis: {
       type: 'value',
-      name: 'L/100km',
+      name: fuelUnit.value,
       axisLabel: { fontSize: 10 }
     },
     series: [{
@@ -296,8 +376,19 @@ function renderPriceChart() {
   if (!priceChartEl.value) return
   if (!priceChart) priceChart = echarts.init(priceChartEl.value)
   priceChart.setOption({
-    tooltip: { trigger: 'axis', formatter: '{b}<br/>{a}: {c} 元/L' },
-    grid: { left: 40, right: 15, top: 20, bottom: 35 },
+    tooltip: {
+      trigger: 'axis',
+      formatter: params => {
+        const head = params[0] ? params[0].axisValue : ''
+        const lines = params.map(p => {
+          const v = (p.value === null || p.value === undefined) ? '—' : `${p.value} 元/L`
+          return `${p.marker}${p.seriesName}: ${v}`
+        })
+        return [head, ...lines].join('<br/>')
+      }
+    },
+    legend: { top: 0, right: 0, itemWidth: 12, itemHeight: 8, textStyle: { fontSize: 10 } },
+    grid: { left: 40, right: 15, top: 34, bottom: 35 },
     xAxis: {
       type: 'category',
       data: chartData.value.dates,
@@ -306,15 +397,27 @@ function renderPriceChart() {
     yAxis: {
       type: 'value',
       name: '元/L',
+      scale: true, // 不从 0 起，否则价格差异会被压平
       axisLabel: { fontSize: 10 }
     },
-    series: [{
-      name: '油价',
-      type: 'line',
-      smooth: true,
-      data: chartData.value.prices,
-      itemStyle: { color: '#ff976a' }
-    }]
+    series: [
+      {
+        name: '实际单价',
+        type: 'line',
+        smooth: true,
+        data: chartData.value.prices,
+        itemStyle: { color: '#ff976a' }
+      },
+      {
+        name: '省最高零售价',
+        type: 'line',
+        smooth: true,
+        data: chartData.value.refPrices,
+        itemStyle: { color: '#1989fa' },
+        lineStyle: { type: 'dashed' },
+        connectNulls: false
+      }
+    ]
   })
 }
 
@@ -406,6 +509,21 @@ function onExportTrip() {
 .stats-item { text-align: center; }
 
 .chart-card { padding: 12px; }
+/* 油价对比 */
+.price-compare { padding-bottom: 12px; }
+.pcm-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.pcm-title { font-size: 14px; font-weight: 600; color: #323233; }
+.pcm-cov { font-size: 11px; color: #969799; }
+.pcm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pcm-item { text-align: center; }
+.pcm-num { font-size: 18px; font-weight: 600; color: #323233; }
+.pcm-num.blue { color: #1989fa; }
+.pcm-num.green { color: #07c160; }
+.pcm-num.red { color: #ee0a24; }
+.pcm-label { margin-top: 3px; font-size: 11px; line-height: 1.4; color: #969799; }
+.pcm-note { margin-top: 10px; font-size: 11px; line-height: 1.5; color: #969799; }
+.pcm-empty { padding: 10px 2px; font-size: 12px; line-height: 1.6; color: #969799; }
+
 .chart-title {
   font-size: 14px;
   font-weight: 600;
