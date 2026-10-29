@@ -26,3 +26,6 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# 验证截图
+__*.png
