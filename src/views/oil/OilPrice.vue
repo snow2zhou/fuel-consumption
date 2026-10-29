@@ -144,8 +144,10 @@
         <div class="fc-conf">
           把握度 {{ confidenceLabel }}
           <span v-if="workingDay !== null"> · 计价周期第 {{ workingDay }}/10 个工作日</span>
+          · <a class="fc-ndrc" href="https://www.ndrc.gov.cn/xwdt/xwfb/" target="_blank" rel="noopener">发改委通知 ↗</a>
         </div>
       </div>
+
 
       <!-- 建议 -->
       <div v-if="hasForecast" class="advice" :class="'adv-' + advice.level">
@@ -199,6 +201,7 @@
           </div>
         </template>
 
+
         <div v-else class="hc-empty">
           已有 {{ historyPoints.length }} 次记录，至少累计 2 次价格变化才能画出曲线。<br />
           每次打开 App（或点右上角刷新）会自动记录当时的价格。
@@ -228,6 +231,19 @@
       </div>
     </template>
 
+      <!-- 发改委调价记录（东财时间线 = 发改委调价结果的结构化数据） -->
+      <div v-if="ndrcList.length && !viewDate" class="ndrc-card">
+        <div class="ndrc-head">
+          <span class="ndrc-title">发改委调价记录</span>
+          <a class="ndrc-link" href="https://www.ndrc.gov.cn/xwdt/xwfb/" target="_blank" rel="noopener">官网通知 ↗</a>
+        </div>
+        <div v-for="r in ndrcList" :key="r.date" class="ndrc-item">
+          <span class="ndrc-date">{{ r.date.slice(5) }} 生效</span>
+          <span class="ndrc-chg" :class="r.gasolineChange > 0 ? 'up' : 'down'">汽油 {{ r.gasolineChange > 0 ? '+' : '' }}{{ r.gasolineChange }}</span>
+          <span class="ndrc-chg" :class="r.dieselChange > 0 ? 'up' : 'down'">柴油 {{ r.dieselChange > 0 ? '+' : '' }}{{ r.dieselChange }}</span>
+          <span class="ndrc-unit">元/吨</span>
+        </div>
+      </div>
     <!-- 历史日期选择 -->
     <van-popup v-model:show="showDatePicker" position="bottom" round>
       <van-date-picker
@@ -320,7 +336,7 @@ import {
   getOilSources, getSourceCreds, saveManualPrice, attachCrudeForecast
 } from '../../api/oilPrice'
 import { getPriceOnDate, getPricesOnDate, addPricePoint } from '../../api/oilHistory'
-import { getHistoricalFromEm } from '../../api/eastmoneyOil'
+import { getHistoricalFromEm, fetchEmAdjustments } from '../../api/eastmoneyOil'
 import { showSuccessToast, showToast } from 'vant'
 import { KIND, sourceStatusText } from '../../api/oilSources'
 import {
@@ -485,9 +501,20 @@ const errorTitle = computed(() => {
 })
 
 /* ---------- 倒计时 ---------- */
+/* ---------- 发改委调价记录（东财时间线，24h 缓存） ---------- */
+const ndrcList = ref([])
+async function ensureNdrc() {
+  if (ndrcList.value.length) return
+  try {
+    const list = await fetchEmAdjustments()
+    ndrcList.value = list.slice(-3).reverse() // 最近 3 次，新的在上
+  } catch (e) { /* 获取失败静默，不影响油价展示 */ }
+}
+
 const now = ref(Date.now())
 let timer = null
 onMounted(() => {
+  ensureNdrc()
   reloadSources()
   if (!province.value) openProvincePicker()
   else {
@@ -1097,6 +1124,28 @@ function goSettings() {
 .fc-line { margin-top: 6px; font-size: 12px; color: #323233; line-height: 1.5; }
 .fc-line.muted { color: #969799; }
 .fc-conf { margin-top: 6px; font-size: 11px; color: #969799; }
+.fc-ndrc { color: #1989fa; text-decoration: none; }
+.ndrc-card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.ndrc-head { display: flex; align-items: center; justify-content: space-between; }
+.ndrc-title { font-size: 13px; font-weight: 600; color: #323233; }
+.ndrc-link { font-size: 11px; color: #1989fa; text-decoration: none; }
+.ndrc-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+  font-size: 11px;
+  color: #646566;
+}
+.ndrc-date { width: 52px; flex-shrink: 0; }
+.ndrc-chg.up { color: #ee0a24; font-weight: 600; }
+.ndrc-chg.down { color: #07c160; font-weight: 600; }
+.ndrc-unit { color: #c8c9cc; }
 
 .advice {
   margin: 10px 12px 0;
